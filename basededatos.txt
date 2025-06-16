@@ -1,0 +1,108 @@
+-- Crear base de datos
+CREATE DATABASE IRSI_ADMISION;
+GO
+
+-- Usar la base de datos
+USE IRSI_ADMISION;
+GO
+
+-- Crear tabla: user
+CREATE TABLE [dbo].[user] (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    username NVARCHAR(120) NOT NULL UNIQUE,
+    password_hash NVARCHAR(350) NOT NULL,
+    role NVARCHAR(50) DEFAULT 'user',
+    two_factor_code NVARCHAR(6),
+    two_factor_expiry DATETIME
+);
+GO
+
+-- Crear tabla: estudiante
+CREATE TABLE [dbo].[estudiante] (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nombre VARCHAR(120) NOT NULL,
+    apellidos VARCHAR(120),
+    pais VARCHAR(80),
+    ciudad VARCHAR(80),
+    direccion VARCHAR(200),
+    grado VARCHAR(50),
+    dni VARCHAR(20),
+    fecha_nacimiento DATE,
+    correo VARCHAR(120) UNIQUE,
+    telefono VARCHAR(30),
+    anio_solicitud INT,
+    user_id INT,
+    sexo VARCHAR(20) NOT NULL DEFAULT 'Otro',
+    motivo TEXT NOT NULL DEFAULT '',
+    veracidad BIT NOT NULL DEFAULT 0,
+    CONSTRAINT FK_Estudiante_User FOREIGN KEY (user_id) REFERENCES [dbo].[user](id)
+);
+GO
+
+-- Crear tabla: Estudiantes
+CREATE TABLE [dbo].[Estudiantes] (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nombre VARCHAR(100),
+    apellidos VARCHAR(100),
+    pais VARCHAR(50),
+    ciudad VARCHAR(100),
+    ultimo_grado_academico VARCHAR(100),
+    dni VARCHAR(50) UNIQUE,
+    fecha_nacimiento DATE,
+    correo_electronico VARCHAR(100),
+    telefono VARCHAR(20),
+    anio_solicitud INT,
+    curso VARCHAR(50),
+    estado_solicitud VARCHAR(20),
+    fecha_registro DATETIME DEFAULT GETDATE(),
+    CHECK (curso IN ('Programadores Junior', 'Ciberseguridad')),
+    CHECK (estado_solicitud IN ('pendiente', 'rechazado', 'aceptado'))
+);
+GO
+
+-- Crear tabla: Inscripcion
+CREATE TABLE [dbo].[Inscripcion] (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    estudiante_id INT NOT NULL,
+    curso_slug NVARCHAR(100) NOT NULL,
+    fecha_inscripcion DATETIME DEFAULT GETDATE(),
+    estado NVARCHAR(50) DEFAULT 'pendiente',
+    razon_rechazo NVARCHAR(MAX),
+    CONSTRAINT FK_Inscripcion_Estudiante FOREIGN KEY (estudiante_id) REFERENCES [dbo].[estudiante](id)
+);
+GO
+
+-- Crear tabla: Usuarios
+CREATE TABLE [dbo].[Usuarios] (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nombre_usuario VARCHAR(50) UNIQUE NOT NULL,
+    correo VARCHAR(100) UNIQUE NOT NULL,
+    contrasena_hash VARCHAR(355) NOT NULL,
+    rol VARCHAR(20) NOT NULL,
+    codigo_verificacion VARCHAR(6),
+    codigo_expira DATETIME,
+    CHECK (rol IN ('consulta', 'director', 'asistente', 'admin'))
+);
+GO
+
+
+
+INSERT INTO Usuarios (nombre_usuario, correo, contrasena_hash, rol) 
+VALUES ('Admin', 'prueba@email.com', '123456', 'admin');
+
+INSERT INTO Usuarios (nombre_usuario, correo, contrasena_hash, rol) 
+VALUES ('usuario', 'prueba@gmail.com', '12345', 'admin');
+
+INSERT INTO "user" (username, password_hash, role) 
+VALUES ('emilioalonzospam@gmail.com', '123455', 'admin');
+
+select * from Usuarios;
+select * from Estudiantes;
+
+select * from estudiante;
+
+select * from "user";
+
+delete from "user" where id=4
+
+update "user" set role = 'admin' where id=5
