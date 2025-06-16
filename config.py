@@ -23,8 +23,8 @@ class Config:
         'DRIVER={ODBC Driver 17 for SQL Server};'
         f"SERVER={os.environ.get('DB_SERVER') or 'localhost'};"
         f"DATABASE={os.environ.get('DB_DATABASE') or 'IRSI_ADMISION'};"
-        f"UID={os.environ.get('DB_UID') or 'emilio'};"
-        f"PWD={os.environ.get('DB_PWD') or 'password'}"
+        f"UID={os.environ.get('DB_UID') or 'aless'};"
+        f"PWD={os.environ.get('DB_PWD') or 'aless'}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False # Recomendado: desactiva el seguimiento de modificaciones de SQLAlchemy para ahorrar recursos.
 
