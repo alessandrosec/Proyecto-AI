@@ -3,8 +3,61 @@
 {% block content %}
     <h1 class="mb-4 text-center">Lista de Estudiantes Registrados</h1>
     
-    {# Botón para AÑADIR Nueva Solicitud de Estudiante (Administrador) #}
-    <a href="{{ url_for('main.solicitar_admision') }}" class="btn btn-success mb-3">Añadir Nueva Solicitud</a>
+    {# NUEVA SECCIÓN: Contenedor para botones y formulario de subida #}
+    <div class="row mb-3">
+        <div class="col-md-6">
+            {# Botón para AÑADIR Nueva Solicitud de Estudiante (lado izquierdo) #}
+            <a href="{{ url_for('main.solicitar_admision') }}" class="btn btn-success">Añadir Nueva Solicitud</a>
+        </div>
+        <div class="col-md-6 text-end">
+            {# NUEVO: Formulario para subir Excel (lado derecho) #}
+            <div class="d-inline-block">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadExcelModal">
+                    <i class="fas fa-upload"></i> Subir Excel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# NUEVO: Modal para subir archivo Excel #}
+    <div class="modal fade" id="uploadExcelModal" tabindex="-1" aria-labelledby="uploadExcelModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadExcelModalLabel">Subir Archivo Excel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" enctype="multipart/form-data" action="{{ url_for('admin.upload_excel') }}">
+                    <div class="modal-body">
+                        {{ excel_form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ excel_form.excel_file.label(class="form-label") }}
+                            {{ excel_form.excel_file(class="form-control") }}
+                            {% if excel_form.excel_file.errors %}
+                                <div class="text-danger">
+                                    {% for error in excel_form.excel_file.errors %}
+                                        <small>{{ error }}</small><br>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="alert alert-info">
+                            <small>
+                                <strong>Formato requerido:</strong><br>
+                                - Columnas: Nombre, Apellidos, DNI, Correo, Telefono, Pais, Ciudad, Direccion, Grado, Fecha_Nacimiento, Sexo, Motivo<br>
+                                - Formato de fecha: YYYY-MM-DD<br>
+                                - Solo archivos .xlsx o .xls
+                            </small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        {{ excel_form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     
     {% if students %}
         <div class="table-responsive">
@@ -39,12 +92,10 @@
                             {% endif %}
                         </td>
                         <td>
-                            {# Botón para EDITAR Estudiante - La ruta ahora es 'solicitar_admision' en el blueprint 'main' #}
-                            {# Y le pasamos el 'estudiante_id' como argumento de consulta para pre-rellenar el formulario #}
+                            {# Botón para EDITAR Estudiante #}
                             <a href="{{ url_for('main.solicitar_admision', estudiante_id=student.id) }}" class="btn btn-sm btn-info">Editar</a>
                             
                             {# Botón para ELIMINAR Estudiante #}
-                            {# Usamos un formulario para la eliminación con POST para mayor seguridad #}
                             <form action="{{ url_for('admin.delete_student', id=student.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este estudiante?');">
                                 <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                             </form>
@@ -59,4 +110,10 @@
             <p class="lead">No hay estudiantes registrados en el sistema.</p>
         </div>
     {% endif %}
+{% endblock %}
+
+{# NUEVO: Agregar Font Awesome para iconos #}
+{% block head_css %}
+    {{ super() }}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 {% endblock %}
