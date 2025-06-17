@@ -1,6 +1,9 @@
-# config.py
-import os
-from dotenv import load_dotenv
+#                   Es el archivo de la configuración del sitema. 
+#                   Define cómo conectarse a la base de datos, configurar el correo electrónico
+#                   la seguridad y otros ajustes importantes de la aplicación
+
+import os                       # Importa "os" para acceder a las variables del sistema operativo (como variables de entorno)
+from dotenv import load_dotenv  # Para cargar las variables del archivo .env
 
 # Carga las variables de entorno desde el archivo .env.
 # Esto es crucial para que os.environ.get() pueda acceder a ellas.
@@ -9,7 +12,11 @@ load_dotenv()
 
 
 
+#                                               CONFIGURACIÓN CENTRAL DE LA APLICACIÓN
+
+# Crear una clase que contendrá todas las configuraciones del Sistema
 class Config:
+
     # Clave Secreta de Flask: Es fundamental para la seguridad de las sesiones y la firma de datos.
     # Obtiene la clave de las variables de entorno. Si no está definida (ej. en desarrollo),
     # usa un valor por defecto. ¡CAMBIA 'una_clave_secreta_muy_dificil_de_adivinar' por un valor único y complejo en PRODUCCIÓN!
@@ -18,7 +25,7 @@ class Config:
     DEBUG = True 
     # Configuración de la Base de Datos SQLAlchemy para SQL Server
     # Obtiene cada componente de la cadena de conexión de las variables de entorno.
-    SQLALCHEMY_DATABASE_URI = (
+    SQLALCHEMY_DATABASE_URI = ( 
         'mssql+pyodbc:///?odbc_connect='
         'DRIVER={ODBC Driver 17 for SQL Server};'
         f"SERVER={os.environ.get('DB_SERVER') or 'localhost'};"
@@ -26,13 +33,16 @@ class Config:
         f"UID={os.environ.get('DB_UID') or 'aless'};"
         f"PWD={os.environ.get('DB_PWD') or 'aless'}"
     )
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False # Recomendado: desactiva el seguimiento de modificaciones de SQLAlchemy para ahorrar recursos.
 
     # Configuración de Flask-Mail
     # MAIL_SERVER: Servidor SMTP para Gmail (se puede sobrescribir con una variable de entorno si es necesario).
     MAIL_SERVER = os.environ.get('MAIL_SERVER') or 'smtp.googlemail.com'
+
     # MAIL_PORT: Puerto SMTP, 587 es estándar para TLS (se puede sobrescribir con una variable de entorno).
     MAIL_PORT = int(os.environ.get('MAIL_PORT') or 587)
+
     # MAIL_USE_TLS: Habilitar Transport Layer Security (TLS). Por defecto True (se puede sobrescribir con una variable de entorno).
     # Convierte el valor del entorno a booleano de forma segura.
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'True').lower() in ('true', '1')
@@ -40,6 +50,7 @@ class Config:
     # MAIL_USERNAME: La cuenta de correo que Flask-Mail usará para autenticarse y enviar.
     # Se obtiene directamente de la variable de entorno EMAIL_USER.
     MAIL_USERNAME = os.environ.get('EMAIL_USER')
+
     # MAIL_PASSWORD: La contraseña (o Contraseña de Aplicación) para la cuenta de correo.
     # Se obtiene directamente de la variable de entorno EMAIL_PASS.
     MAIL_PASSWORD = os.environ.get('EMAIL_PASS')
