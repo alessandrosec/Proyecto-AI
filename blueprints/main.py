@@ -1,36 +1,73 @@
 # your_flask_app/blueprints/main.py
 
-from flask import Blueprint, render_template, flash, redirect, url_for, request
-from flask_login import login_required, current_user
-from ..models import Estudiante, Inscripcion
-from ..forms import EstudianteForm, InscripcionApprovalForm
-from ..extensions import db
-from ..decorators import role_required
-from datetime import date
-import bleach
+#                   Es el archivo MÁS IMPORTANTE del sistema.
+#                   MANEJA las FUNCIONE PRINCIPALES:
+#                       - Mostrar la página de inicio con cursos
+#                       - Procesar solicitudes de becas
+#                       - Mostrar el estado de las solicitudes
 
+
+
+from flask import Blueprint, render_template, flash, redirect, url_for, request     # Importa las herramientas básicas de Flask
+from flask_login import login_required, current_user                                # Importa herramientas de Autenticación
+from ..models import Estudiante, Inscripcion                                        # Importa los modelos de datos (estudiantes e inscripciones)
+from ..forms import EstudianteForm, InscripcionApprovalForm                         # Importa los formularios que usará
+from ..extensions import db                                                         # Importa "db" para hablar con la base de datos
+from ..decorators import role_required                                              # Importa el decorador para verificar roles de usuario
+from datetime import date                                                           # Importa las herramientas para trabajar con fechas
+import bleach                                                                       # Para limpiar datos maliciosos
 # ✅ Importa los diccionarios desde data.py
-from ..data import LATAM_PAISES_CIUDADES, NOMBRE_DOCUMENTO_POR_PAIS
+from ..data import LATAM_PAISES_CIUDADES, NOMBRE_DOCUMENTO_POR_PAIS                 # Importa los diccionarios de países/ciudades y nombres de documentos
 
+
+
+
+#                    CREAR EL BLUEPRINT PRINCIPAL
+# Crea la sección PRINCIPAL del SISTEMA que usa templates de .../templates
 main_bp = Blueprint('main', __name__, template_folder='../templates')
 
+
+
+
+#                   PÁGINA DE INICIO
+# Ejecuta cuando va a la página principal (/)
 @main_bp.route('/')
-@main_bp.route('/index')
+@main_bp.route('/index') # También ejecuta cuando va a /index
+
+# Inicia de la Página Principal
 def index():
     return render_template('index.html', title='Inicio')
 
+
+
+
+#                   DETALLES DEL CURSO
 @main_bp.route('/cursos/<slug>')
 def curso_detalle(slug):
     cursos = {
-        'programacion-python': {
-            'nombre': 'Programación con Python para Principiantes',
-            'descripcion': 'Aprende los fundamentos de Python.',
+        'programadores-junior': {
+            'nombre': 'PROGRAMADORES JUNIOR',
+            'descripcion': 'Impulsa tu futuro. Aprender a Programar con una beca 100% gratuita y adquiere nuevas habilidades digitales',
+            
+            # Agregué esto ya que el código estaba hardokeado, entonces los requisitos que se editaban aparecían en ambos apartados
+            'requisitos': [
+                'Tener entre 18 a 35 años'
+                'Graduado a Niverl Medio'
+            ],
             'imagen': 'python.png',
             'slug': 'programacion-python'
+
         },
-        'desarrollo-web-flask': {
-            'nombre': 'Desarrollo Web con Flask',
-            'descripcion': 'Construye aplicaciones web robustas con Flask.',
+        'ciberseguridad': {
+            'nombre': 'PROGRAMA DE CERTIFICACIÓN EN CIBERSEGURIDAD',
+            'descripcion': 'Conoce todo lo que aprenderás en el programa de certificación en ciberseguridad de IRSI',
+            
+            # Agregué requitos al igual que arriba
+            'requisitos': [
+                'La capacidad de programar en varios lenguajes es útil para entender mejor los sistemas y aplicaciones que se deben proteger.'
+                'Los conocimientos de redes son esenciales para entender cómo se conectan los sistemas y cómo se pueden proteger las redes contra posibles amenazas.'
+                'Es importante tener un conocimiento sólido de sistemas operativos como Windows y Linux para identificar vulnerabilidades en los sistemas y aplicaciones.'
+            ],
             'imagen': 'flask.png',
             'slug': 'desarrollo-web-flask'
         }
@@ -46,6 +83,10 @@ def curso_detalle(slug):
         curso_slug=curso['slug']  # <--- Esta línea es clave
     )
 
+
+
+
+#                   SOLICITAR ADMISIÓN (Función más compleja)         
 @main_bp.route('/solicitar_admision', methods=['GET', 'POST'])
 @login_required
 @role_required(['user', 'admin'])
@@ -72,9 +113,13 @@ def solicitar_admision():
     dni_label = NOMBRE_DOCUMENTO_POR_PAIS.get(form.pais.data, "Documento de Identificación")
 
     if form.validate_on_submit():
+
+#       ACTUALIZAR DATOS DEL ESTUDIANTE
         # Actualizar datos del estudiante (si existe) o crear nuevo
         if estudiante:
             form.populate_obj(estudiante)
+
+        #     
         else:
             estudiante = Estudiante(
                 nombre=bleach.clean(form.nombre.data),
@@ -96,6 +141,7 @@ def solicitar_admision():
             db.session.add(estudiante)
             db.session.flush()  # para obtener id
 
+#       VALIDAR DATOS ÚNICOS
         # Validar duplicados por DNI/correo al crear
         if not inscripcion_existente:
             existing_dni = Estudiante.query.filter(Estudiante.dni == bleach.clean(form.dni.data), Estudiante.id != estudiante.id).first()
@@ -122,6 +168,7 @@ def solicitar_admision():
                     dni_label=dni_label
                 )
 
+#       CRAR UNA INSCRIPCIÓN
         # Solo crear inscripción nueva si no existe para ese curso
         if not inscripcion_existente:
             nueva_inscripcion = Inscripcion(
@@ -137,6 +184,7 @@ def solicitar_admision():
         db.session.commit()
         return redirect(url_for('main.mis_solicitudes'))
 
+#   MOSTRAR FORMULARIO
     return render_template(
         'add_student.html',
         title='Solicitar Admisión',
@@ -147,6 +195,9 @@ def solicitar_admision():
     )
 
 
+
+
+#                   VER MIS SOLICITUDES
 @main_bp.route('/mis_solicitudes')
 @login_required
 @role_required(['user'])
