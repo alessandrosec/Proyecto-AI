@@ -473,3 +473,177 @@ def export_inscripciones():
     except Exception as e:
         flash(f'Error al exportar inscripciones: {str(e)}', 'danger')
         return redirect(url_for('admin.manage_inscripciones'))
+    
+
+
+
+#                   NUEVA FUNCIÓN: Procesar archivo Excel de Inscripciones (G) NUEVO XD
+@admin_bp.route('/upload_inscripciones_excel', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def upload_inscripciones_excel():
+    form = UploadInscripcionesExcelForm()
+    
+    if form.validate_on_submit():
+        try:
+            # Obtener el archivo subido
+            file = form.excel_file.data
+            filename = secure_filename(file.filename)
+            
+            # Crear directorio temporal si no existe
+            upload_folder = 'temp_uploads'
+            if not os.path.exists(upload_folder):
+                os.makedirs(upload_folder)
+            
+            # Guardar archivo temporalmente
+            file_path = os.path.join(upload_folder, filename)
+            file.save(file_path)
+            
+            # Leer el archivo Excel con pandas
+            try:
+                df = pd.read_excel(file_path)
+            except Exception as e:
+                flash(f'Error al leer el archivo Excel: {str(e)}', 'danger')
+                os.remove(file_path)
+                return redirect(url_for('admin.manage_inscripciones'))
+            
+            # Validar columnas requeridas para inscripciones
+            required_columns = ['Nombre', 'Apellidos', 'DNI', 'Correo', 'Telefono', 
+                                'Pais', 'Ciudad', 'Direccion', 'Grado', 'Fecha_Nacimiento', 
+                                'Sexo', 'Motivo', 'Curso']
+            
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                flash(f'Faltan las siguientes columnas en el Excel: {", ".join(missing_columns)}', 'danger')
+                os.remove(file_path)
+                return redirect(url_for('admin.manage_inscripciones'))
+            
+            # Contadores para el reporte
+            inscripciones_agregadas = 0
+            inscripciones_duplicadas = 0
+            errores = []
+            
+            # Procesar cada fila del Excel
+            for index, row in df.iterrows():
+                try:
+                    # Validar datos básicos
+                    if pd.isna(row['Nombre']) or pd.isna(row['Apellidos']) or pd.isna(row['DNI']) or pd.isna(row['Correo']) or pd.isna(row['Curso']):
+                        errores.append(f'Fila {index + 2}: Faltan datos obligatorios (Nombre, Apellidos, DNI, Correo, Curso)')
+                        continue
+                    
+                    # Limpiar y preparar datos
+                    dni = str(row['DNI']).strip()
+                    correo = str(row['Correo']).strip().lower()
+                    curso_slug = str(row['Curso']).strip()
+                    
+                    # Verificar si ya existe una inscripción con este DNI y curso
+                    # Primero buscar el estudiante
+                    existing_student = Estudiante.query.filter_by(dni=dni).first()
+                    if existing_student:
+                        # Verificar si ya tiene inscripción para este curso
+                        existing_inscripcion = Inscripcion.query.filter_by(
+                            estudiante_id=existing_student.id, 
+                            curso_slug=curso_slug
+                        ).first()
+                        if existing_inscripcion:
+                            inscripciones_duplicadas += 1
+                            errores.append(f'Fila {index + 2}: Ya existe una inscripción para {dni} en el curso {curso_slug}')
+                            continue
+                    
+                    # Procesar fecha de nacimiento
+                    try:
+                        if isinstance(row['Fecha_Nacimiento'], str):
+                            fecha_nacimiento = datetime.strptime(row['Fecha_Nacimiento'], '%Y-%m-%d').date()
+                        else:
+                            fecha_nacimiento = row['Fecha_Nacimiento'].date()
+                    except:
+                        errores.append(f'Fila {index + 2}: Formato de fecha inválido. Use YYYY-MM-DD')
+                        continue
+                    
+                    # Crear o actualizar estudiante
+                    if existing_student:
+                        # Actualizar datos del estudiante existente si es necesario
+                        estudiante = existing_student
+                    else:
+                        # Verificar duplicado por correo también
+                        existing_email = Estudiante.query.filter_by(correo=correo).first()
+                        if existing_email:
+                            errores.append(f'Fila {index + 2}: Ya existe un estudiante con el correo {correo}')
+                            continue
+                        
+                        # Crear nuevo estudiante
+                        estudiante = Estudiante(
+                            nombre=bleach.clean(str(row['Nombre']).strip()),
+                            apellidos=bleach.clean(str(row['Apellidos']).strip()),
+                            dni=bleach.clean(dni),
+                            correo=bleach.clean(correo),
+                            telefono=bleach.clean(str(row['Telefono']).strip()) if not pd.isna(row['Telefono']) else '',
+                            pais=bleach.clean(str(row['Pais']).strip()) if not pd.isna(row['Pais']) else '',
+                            ciudad=bleach.clean(str(row['Ciudad']).strip()) if not pd.isna(row['Ciudad']) else '',
+                            direccion=bleach.clean(str(row['Direccion']).strip()) if not pd.isna(row['Direccion']) else '',
+                            grado=bleach.clean(str(row['Grado']).strip()) if not pd.isna(row['Grado']) else '',
+                            fecha_nacimiento=fecha_nacimiento,
+                            sexo=bleach.clean(str(row['Sexo']).strip()) if not pd.isna(row['Sexo']) else 'Otro',
+                            motivo=bleach.clean(str(row['Motivo']).strip()) if not pd.isna(row['Motivo']) else 'Cargado desde Excel',
+                            veracidad=True,
+                            anio_solicitud=datetime.now().year,
+                            user_id=None
+                        )
+                        db.session.add(estudiante)
+                        db.session.flush()  # Para obtener el ID del estudiante
+                    
+                    # Crear nueva inscripción
+                    nueva_inscripcion = Inscripcion(
+                        estudiante_id=estudiante.id,
+                        curso_slug=curso_slug,
+                        fecha_inscripcion=datetime.now(),
+                        estado='pendiente',
+                        razon_rechazo=None
+                    )
+                    
+                    db.session.add(nueva_inscripcion)
+                    inscripciones_agregadas += 1
+                    
+                except Exception as e:
+                    errores.append(f'Fila {index + 2}: Error al procesar - {str(e)}')
+                    continue
+            
+            # Confirmar cambios en la base de datos
+            try:
+                db.session.commit()
+                
+                # Crear mensaje de éxito
+                mensaje = f'Procesamiento completado: {inscripciones_agregadas} inscripciones agregadas'
+                if inscripciones_duplicadas > 0:
+                    mensaje += f', {inscripciones_duplicadas} duplicadas omitidas'
+                if errores:
+                    mensaje += f', {len(errores)} errores encontrados'
+                
+                flash(mensaje, 'success')
+                
+                # Mostrar errores si los hay
+                if errores:
+                    for error in errores[:10]:  # Mostrar solo los primeros 10 errores
+                        flash(error, 'warning')
+                    if len(errores) > 10:
+                        flash(f'... y {len(errores) - 10} errores más', 'warning')
+                
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al guardar en la base de datos: {str(e)}', 'danger')
+            
+            # Limpiar archivo temporal
+            os.remove(file_path)
+            
+        except Exception as e:
+            flash(f'Error inesperado al procesar el archivo: {str(e)}', 'danger')
+            if 'file_path' in locals() and os.path.exists(file_path):
+                os.remove(file_path)
+    
+    else:
+        # Si el formulario no es válido, mostrar errores
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f'{field}: {error}', 'danger')
+    
+    return redirect(url_for('admin.manage_inscripciones'))
