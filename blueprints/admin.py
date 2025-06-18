@@ -6,17 +6,21 @@
 
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
-from flask_login import login_required                                              # Solo usuarios logueados pueden acceder
-from ..decorators import role_required                                              # Solo usuarios con Rol específico pueden acceder
-from ..models import Estudiante, Inscripcion                                        # Los modelos de los datos
-from ..forms import EstudianteForm, InscripcionApprovalForm, UploadExcelForm        # Formulario para aprobar/rechazar solicitudes
-from ..extensions import db                                                         # Para interactuar con la base de datos
-import bleach                                                                       # Para limpiar la entrada del usuario
+from flask_login import login_required                                                                          # Solo usuarios logueados pueden acceder
+from ..decorators import role_required                                                                          # Solo usuarios con Rol específico pueden acceder
+from ..models import Estudiante, Inscripcion                                                                    # Los modelos de los datos        
+from ..forms import EstudianteForm, InscripcionApprovalForm, UploadExcelForm, UploadInscripcionesExcelForm      # Formulario para aprobar/rechazar solicitudes
+from ..extensions import db                                                                                     # Para interactuar con la base de datos
+import bleach                                                                                                   # Para limpiar la entrada del usuario
 # NUEVAS IMPORTACIONES PARA EXCEL
 import pandas as pd
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime, date
+from flask import send_file, make_response
+from io import BytesIO
+import pandas as pd
+from datetime import datetime
 
 
 #                   CREACIÓN DE BLUEPRINTS 
@@ -55,9 +59,12 @@ def dashboard():
 
 # Inicia función para mostrar estudiantes
 def student_list():
-    students = Estudiante.query.all()                                                               # Obtiene TODOS los estudiantes de la BD y los guarda en students
-    return render_template('student_list.html', title='Lista de Estudiantes',
-                            students=students)    # Muestra la página student_list.html y le pasa la lista de estudiantes
+    students = Estudiante.query.all()                                       # Obtiene TODOS los estudiantes de la BD y los guarda en students
+    excel_form = UploadExcelForm()                                          # Línea nueva
+    return render_template('admin/student_list.html', 
+                            title='Lista de Estudiantes',
+                            students=students, 
+                            excel_form=excel_form)    # Muestra la página student_list.html y le pasa la lista de estudiantes
 
 
 
@@ -95,10 +102,14 @@ def manage_inscripciones():
     # Obtener todas las inscripciones o filtrarlas
     inscripciones = Inscripcion.query.all()
 
+    # Nueva instancia del formulario para subir excel
+    excel_form = UploadInscripcionesExcelForm()
+
     # Muestra la página con todas las solicitudes
     return render_template('manage_inscripcion.html',
                             title='Gestión de Inscripciones',
-                            inscripciones=inscripciones)
+                            inscripciones=inscripciones,
+                            excel_form=excel_form)
 
 
 
@@ -132,18 +143,25 @@ def update_inscripcion_status(inscripcion_id):
                             form=form, inscripcion=inscripcion) # Necesitarás crear esta plantilla
 
 
+
 #                   NUEVA FUNCIÓN: Procesar archivo Excel (G)
-@admin_bp.route('/upload_excel', methods=['POST'])
+@admin_bp.route('/upload_excel', methods=['GET', 'POST'])
 @login_required
 @role_required(['admin'])
 def upload_excel():
+    print("DEBUG: Función upload_excel llamada")
+    print(f"DEBUG: Método de request: {request.method}")
+    
     form = UploadExcelForm()
+    print(f"DEBUG: Formulario válido: {form.validate_on_submit()}")
     
     if form.validate_on_submit():
         try:
             # Obtener el archivo subido
             file = form.excel_file.data
             filename = secure_filename(file.filename)
+            
+            print(f"DEBUG: Archivo recibido: {filename}")
             
             # Crear directorio temporal si no existe
             upload_folder = 'temp_uploads'
@@ -154,9 +172,12 @@ def upload_excel():
             file_path = os.path.join(upload_folder, filename)
             file.save(file_path)
             
+            print(f"DEBUG: Archivo guardado en: {file_path}")
+            
             # Leer el archivo Excel con pandas
             try:
                 df = pd.read_excel(file_path)
+                print(f"DEBUG: Excel leído correctamente. Filas: {len(df)}")
             except Exception as e:
                 flash(f'Error al leer el archivo Excel: {str(e)}', 'danger')
                 os.remove(file_path)  # Limpiar archivo temporal
@@ -269,8 +290,186 @@ def upload_excel():
     
     else:
         # Si el formulario no es válido, mostrar errores
+        print("DEBUG: Errores del formulario:")
         for field, errors in form.errors.items():
+            print(f"  {field}: {errors}")
             for error in errors:
                 flash(f'{field}: {error}', 'danger')
     
     return redirect(url_for('admin.student_list'))
+
+
+
+
+
+#                   EXPORTAR ARCHIVOS DE EXCEL (G)
+@admin_bp.route('/export_estudiantes')
+@login_required
+@role_required(['admin'])
+def export_estudiantes():
+    """Exportar lista de estudiantes a Excel"""
+    try:
+        # Obtener todos los estudiantes
+        estudiantes = Estudiante.query.all()
+        
+        # Crear lista de diccionarios con los datos
+        data = []
+        for estudiante in estudiantes:
+            data.append({
+                'ID': estudiante.id,
+                'Nombre': estudiante.nombre,
+                'Apellidos': estudiante.apellidos,
+                'DNI': estudiante.dni,
+                'Correo': estudiante.correo,
+                'Teléfono': estudiante.telefono,
+                'País': estudiante.pais,
+                'Ciudad': estudiante.ciudad,
+                'Dirección': estudiante.direccion,
+                'Grado': estudiante.grado,
+                'Fecha_Nacimiento': estudiante.fecha_nacimiento.strftime('%Y-%m-%d') if estudiante.fecha_nacimiento else '',
+                'Sexo': estudiante.sexo,
+                'Motivo': estudiante.motivo,
+                'Año_Solicitud': estudiante.anio_solicitud,
+                'Veracidad': 'Sí' if estudiante.veracidad else 'No',
+                'Rol_Usuario': estudiante.user.role if estudiante.user else 'Sin Usuario'
+            })
+        
+        # Crear DataFrame
+        df = pd.DataFrame(data)
+        
+        # Crear archivo Excel en memoria
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Estudiantes', index=False)
+            
+            # Obtener el workbook y worksheet para formatear
+            workbook = writer.book
+            worksheet = writer.sheets['Estudiantes']
+            
+            # Ajustar ancho de columnas
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        # Crear nombre de archivo con fecha
+        filename = f"estudiantes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        # Enviar archivo
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        flash(f'Error al exportar estudiantes: {str(e)}', 'danger')
+        return redirect(url_for('admin.student_list'))
+
+
+@admin_bp.route('/export_inscripciones')
+@login_required
+@role_required(['admin'])
+def export_inscripciones():
+    """Exportar lista de inscripciones a Excel"""
+    try:
+        # Obtener todas las inscripciones con información del estudiante
+        inscripciones = Inscripcion.query.join(Estudiante).all()
+        
+        # Crear lista de diccionarios con los datos
+        data = []
+        for inscripcion in inscripciones:
+            data.append({
+                'ID_Inscripción': inscripcion.id,
+                'Estudiante_ID': inscripcion.estudiante_id,
+                'Nombre_Completo': f"{inscripcion.estudiante.nombre} {inscripcion.estudiante.apellidos}",
+                'DNI': inscripcion.estudiante.dni,
+                'Correo': inscripcion.estudiante.correo,
+                'Teléfono': inscripcion.estudiante.telefono,
+                'País': inscripcion.estudiante.pais,
+                'Ciudad': inscripcion.estudiante.ciudad,
+                'Curso': inscripcion.curso_slug,
+                'Fecha_Inscripción': inscripcion.fecha_inscripcion.strftime('%Y-%m-%d %H:%M:%S'),
+                'Estado': inscripcion.estado,
+                'Razón_Rechazo': inscripcion.razon_rechazo or 'N/A',
+                'Grado_Estudios': inscripcion.estudiante.grado,
+                'Sexo': inscripcion.estudiante.sexo,
+                'Año_Solicitud': inscripcion.estudiante.anio_solicitud
+            })
+        
+        # Crear DataFrame
+        df = pd.DataFrame(data)
+        
+        # Crear archivo Excel en memoria
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Hoja principal con todas las inscripciones
+            df.to_excel(writer, sheet_name='Todas_Inscripciones', index=False)
+            
+            # Hojas separadas por estado
+            for estado in ['pendiente', 'aceptada', 'rechazada']:
+                df_estado = df[df['Estado'] == estado]
+                if not df_estado.empty:
+                    df_estado.to_excel(writer, sheet_name=f'Estado_{estado.capitalize()}', index=False)
+            
+            # Hoja de estadísticas
+            stats_data = {
+                'Estadística': [
+                    'Total Inscripciones',
+                    'Pendientes',
+                    'Aceptadas', 
+                    'Rechazadas',
+                    'Fecha Generación'
+                ],
+                'Valor': [
+                    len(df),
+                    len(df[df['Estado'] == 'pendiente']),
+                    len(df[df['Estado'] == 'aceptada']),
+                    len(df[df['Estado'] == 'rechazada']),
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+            }
+            stats_df = pd.DataFrame(stats_data)
+            stats_df.to_excel(writer, sheet_name='Estadísticas', index=False)
+            
+            # Formatear todas las hojas
+            for sheet_name in writer.sheets:
+                worksheet = writer.sheets[sheet_name]
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        # Crear nombre de archivo con fecha
+        filename = f"inscripciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        # Enviar archivo
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        flash(f'Error al exportar inscripciones: {str(e)}', 'danger')
+        return redirect(url_for('admin.manage_inscripciones'))
